@@ -2,22 +2,39 @@
 
 # Usage message function
 usage() {
-    echo "Usage: $0 [--mvnclean] [ [nosubdirs:]path...]" >&2
+    echo "Usage: $0 [--mvnclean] [--shallow|-s] [--excludes|-e ant-pattern]... [path...]" >&2
     echo "Concatenates files from the specified paths (or current directory if none provided)." >&2
     echo "Paths can be directories or files:" >&2
-    echo "  directory         Include files recursively from the directory" >&2
-    echo "  nosubdirs:directory  Include only top-level files from the directory" >&2
+    echo "  directory         Include files recursively from the directory (unless --shallow is active)" >&2
     echo "  file             Include the specified file directly" >&2
     echo "Options:" >&2
     echo "  --mvnclean       Search for pom.xml from each directory and run mvn clean once per unique pom.xml" >&2
+    echo "  --shallow|-s     Include only top-level files from subsequent directories" >&2
+    echo "  --excludes|-e pattern  Exclude files matching the Ant-style path expression (e.g., --excludes **/*.txt)" >&2
     exit 1
+}
+
+# Function to check if a file matches any Ant-style exclude pattern
+matches_exclude_pattern() {
+    local file="$1"
+    for pattern in "${EXCLUDE_PATTERNS[@]}"; do
+        # Convert Ant-style pattern to a bash-compatible pattern
+        # **/* -> .*, *.txt -> *.txt, **/*.txt -> **/*.txt
+        bash_pattern=$(echo "$pattern" | sed 's/\*\*/\*/g')
+        if [[ "$file" == $bash_pattern ]]; then
+            return 0 # Match found
+        fi
+    done
+    return 1 # No match
 }
 
 # Initialize variables
 MVNCLEAN=false
+SHALLOW=false
 ROOT_DIRS=()
 NO_SUBDIRS_FLAGS=()
 FILES=()
+EXCLUDE_PATTERNS=()
 ORIGINAL_ARGS=$#
 declare -A POM_DIRS  # Associative array to track unique pom.xml directories
 
@@ -28,22 +45,24 @@ while [ $# -gt 0 ]; do
             MVNCLEAN=true
             shift
             ;;
-        nosubdirs:*)
-            dir="${1#nosubdirs:}"
-            if [ -z "$dir" ]; then
-                echo "Error: 'nosubdirs:' prefix requires a directory path" >&2
+        --shallow|-s)
+            SHALLOW=true
+            shift
+            ;;
+        --excludes|-e)
+            if [ -z "$2" ]; then
+                echo "Error: '--excludes' or '-e' requires an Ant-style pattern" >&2
                 usage
             fi
-            ROOT_DIRS+=("$dir")
-            NO_SUBDIRS_FLAGS+=("true")
-            shift
+            EXCLUDE_PATTERNS+=("$2")
+            shift 2
             ;;
         *)
             if [ -f "$1" ]; then
                 FILES+=("$1")
             elif [ -d "$1" ]; then
                 ROOT_DIRS+=("$1")
-                NO_SUBDIRS_FLAGS+=("false")
+                NO_SUBDIRS_FLAGS+=("$SHALLOW")
             else
                 echo "Error: '$1' is neither a readable file nor a directory" >&2
                 usage
@@ -56,11 +75,11 @@ done
 # Set root directories to current directory if none provided and no files
 if [ ${#ROOT_DIRS[@]} -eq 0 ] && [ ${#FILES[@]} -eq 0 ]; then
     ROOT_DIRS=(".")
-    NO_SUBDIRS_FLAGS=("false")
+    NO_SUBDIRS_FLAGS=("$SHALLOW")
 fi
 
 # If no arguments were provided at all and no options, inform user about default and show usage
-if [ "$ORIGINAL_ARGS" -eq 0 ] && [ "$MVNCLEAN" = false ]; then
+if [ "$ORIGINAL_ARGS" -eq 0 ] && [ "$MVNCLEAN" = false ] && [ ${#EXCLUDE_PATTERNS[@]} -eq 0 ] && [ "$SHALLOW" = false ]; then
     echo "No paths provided, defaulting to current directory (.)."
     usage
 fi
@@ -136,6 +155,12 @@ else
         echo "  [file] $file"
     done
 fi
+if [ ${#EXCLUDE_PATTERNS[@]} -gt 0 ]; then
+    echo "Excluding files matching the following patterns:"
+    for pattern in "${EXCLUDE_PATTERNS[@]}"; do
+        echo "  $pattern"
+    done
+fi
 
 # Constants
 HEADER="concatenated sources"
@@ -170,6 +195,12 @@ for ((i=0; i<${#ROOT_DIRS[@]}; i++)); do
 
     # Find all files in specified directory and process them
     eval "$FIND_CMD" | while IFS= read -r -d '' file; do
+        # Check if file matches any exclude pattern
+        if matches_exclude_pattern "$file"; then
+            echo "Skipping excluded file: $file"
+            continue
+        fi
+
         # Print filename to console
         echo "$file"
 
@@ -212,6 +243,12 @@ done
 
 # Process individual files
 for file in "${FILES[@]}"; do
+    # Check if file matches any exclude pattern
+    if matches_exclude_pattern "$file"; then
+        echo "Skipping excluded file: $file"
+        continue
+    fi
+
     # Print filename to console
     echo "$file"
 
