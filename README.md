@@ -21,26 +21,24 @@ Options:
 ## Example
 
 ```
-./concat-files.sh --shallow --excludes **/*.txt test/test1 file1.java
+./concat-files.sh test/test1 -e **/directory2/* 
 ```
 
 This command:
-- Concatenates top-level files from `test/test1` (due to `--shallow`)
-- Includes `file1.java` directly
-- Excludes any files matching `**/*.txt`
-- Creates files like `./test-part1.txt`, `./test-part2.txt`, etc., if the total character count exceeds 100,000
+- Concatenates files in test/test1` recusively 
+- Excludes any files matching `**/directory2/*`
+- Creates files like `./concat-files-part1.txt`, `./concat-files-part2.txt`, etc., if the total character count exceeds 100,000
 
-The output file(s) will have the following structure:
+The output file(s) will be:
 
 ```
 concatenated sources
 ---------------------------------------------
-file test/test1/fileA.java:
-[Content of fileA.java]
+file test/test1/directory1/fileA.txt:
+This is fileA.txt
 ---------------------------------------------
-file file1.java:
-[Content of file1.java]
----------------------------------------------
+file test/test1/directory1/fileB.txt:
+This is fileB.txt
 ```
 
 Each output file starts with a header, followed by sections for each included file, separated by a line of dashes, with a maximum of 100,000 characters per file.
