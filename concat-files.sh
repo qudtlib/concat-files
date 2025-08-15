@@ -2,7 +2,7 @@
 
 # Usage message function
 usage() {
-    echo "Usage: $0 [--mvnclean] [--shallow|-s] [--excludes|-e ant-pattern]... [path...]" >&2
+    echo "Usage: $0 [--mvnclean] [--shallow|-s] [--excludes|-e ant-pattern]... [-o|--output output.txt] [path...]" >&2
     echo "Concatenates files from the specified paths (or current directory if none provided)." >&2
     echo "Paths can be directories or files:" >&2
     echo "  directory         Include files recursively from the directory (unless --shallow is active)" >&2
@@ -11,6 +11,7 @@ usage() {
     echo "  --mvnclean       Search for pom.xml from each directory and run mvn clean once per unique pom.xml" >&2
     echo "  --shallow|-s     Include only top-level files from subsequent directories" >&2
     echo "  --excludes|-e pattern  Exclude files matching the Ant-style path expression (e.g., --excludes **/*.txt)" >&2
+    echo "  -o, --output file.txt  Specify the output file pattern (e.g., tmp/output.txt)" >&2
     exit 1
 }
 
@@ -35,6 +36,7 @@ ROOT_DIRS=()
 NO_SUBDIRS_FLAGS=()
 FILES=()
 EXCLUDE_PATTERNS=()
+OUTPUT_PATTERN=""
 ORIGINAL_ARGS=$#
 declare -A POM_DIRS  # Associative array to track unique pom.xml directories
 
@@ -55,6 +57,18 @@ while [ $# -gt 0 ]; do
                 usage
             fi
             EXCLUDE_PATTERNS+=("$2")
+            shift 2
+            ;;
+        -o|--output)
+            if [ -z "$2" ]; then
+                echo "Error: '-o' or '--output' requires a .txt file pattern" >&2
+                usage
+            fi
+            OUTPUT_PATTERN="$2"
+            if [[ ! "$OUTPUT_PATTERN" =~ \.txt$ ]]; then
+                echo "Error: Output pattern must end with .txt" >&2
+                usage
+            fi
             shift 2
             ;;
         *)
@@ -79,7 +93,7 @@ if [ ${#ROOT_DIRS[@]} -eq 0 ] && [ ${#FILES[@]} -eq 0 ]; then
 fi
 
 # If no arguments were provided at all and no options, inform user about default and show usage
-if [ "$ORIGINAL_ARGS" -eq 0 ] && [ "$MVNCLEAN" = false ] && [ ${#EXCLUDE_PATTERNS[@]} -eq 0 ] && [ "$SHALLOW" = false ]; then
+if [ "$ORIGINAL_ARGS" -eq 0 ] && [ "$MVNCLEAN" = false ] && [ ${#EXCLUDE_PATTERNS[@]} -eq 0 ] && [ "$SHALLOW" = false ] && [ -z "$OUTPUT_PATTERN" ]; then
     echo "No paths provided, defaulting to current directory (.)."
     usage
 fi
@@ -166,8 +180,17 @@ fi
 HEADER="concatenated sources"
 SEPARATOR="---------------------------------------------"
 CHAR_LIMIT=100000
-PART_PREFIX="$(basename "$(pwd)")-part"
 PART_EXT=".txt"
+
+# Determine PART_PREFIX based on OUTPUT_PATTERN or default
+if [ -n "$OUTPUT_PATTERN" ]; then
+    OUTPUT_DIR=$(dirname "$OUTPUT_PATTERN")
+    OUTPUT_BASE=$(basename "$OUTPUT_PATTERN" .txt)
+    PART_PREFIX="${OUTPUT_DIR}/${OUTPUT_BASE}-part"
+    mkdir -p "$OUTPUT_DIR" || exit 1
+else
+    PART_PREFIX="$(basename "$(pwd)")-part"
+fi
 
 # Remove existing part files
 rm -f "${PART_PREFIX}"*"${PART_EXT}"
@@ -286,4 +309,10 @@ for file in "${FILES[@]}"; do
 
     # Update character count
     char_count=$(( char_count + total_addition ))
+done
+
+# List all files written
+echo "Files written:"
+for ((i=1; i<=part_num; i++)); do
+    echo "${PART_PREFIX}${i}${PART_EXT}"
 done

@@ -16,6 +16,7 @@ Options:
   --mvnclean       Search for pom.xml from each directory and run mvn clean once per unique pom.xml
   --shallow|-s     Include only top-level files from subsequent directories
   --excludes|-e pattern  Exclude files matching the Ant-style path expression (e.g., --excludes **/*.txt)
+  --output|-o path/to/file.txt  Specify the output file pattern (e.g., tmp/output.txt --> tmp/output_part1.txt, tmp/output_part2.txt etc.)
 ```
 
 ## Example
